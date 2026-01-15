@@ -46,7 +46,7 @@ TEST(CoordinateFrame, EstimateGravityVectorFromImageOrientation) {
 #ifdef COLMAP_LSD_ENABLED
 TEST(CoordinateFrame, EstimateManhattanWorldFrame) {
   Reconstruction reconstruction;
-  std::string image_path;
+  std::filesystem::path image_path;
   EXPECT_EQ(
       EstimateManhattanWorldFrame(
           ManhattanWorldFrameEstimationOptions(), reconstruction, image_path),
@@ -124,7 +124,7 @@ TEST(CoordinateFrame, AlignToPrincipalPlane) {
   } else {
     expected << 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0;
   }
-  EXPECT_LT((tform.ToMatrix() - expected).norm(), 1e-6);
+  EXPECT_THAT(tform.ToMatrix(), EigenMatrixNear(expected, 1e-6));
 }
 
 TEST(CoordinateFrame, AlignToENUPlane) {

@@ -123,8 +123,8 @@ class BundleAdjustmentConfig {
 };
 
 struct BundleAdjustmentOptions {
-  // Loss function types: Trivial (non-robust) and Cauchy (robust) loss.
-  enum class LossFunctionType { TRIVIAL, SOFT_L1, CAUCHY };
+  // Loss function types: Trivial (non-robust) and robust loss functions.
+  enum class LossFunctionType { TRIVIAL, SOFT_L1, CAUCHY, HUBER };
   LossFunctionType loss_function_type = LossFunctionType::TRIVIAL;
 
   // Scaling factor determines residual at which robustification takes place.
@@ -142,6 +142,17 @@ struct BundleAdjustmentOptions {
   // Whether to refine the extrinsic parameter group.
   bool refine_sensor_from_rig = true;
   bool refine_rig_from_world = true;
+
+  // Whether to refine the 3D point positions. When false, all 3D points are
+  // treated as constant, enabling refinement of only camera intrinsics and
+  // poses. This is useful when 3D points come from a reference model and
+  // should not be modified.
+  bool refine_points3D = true;
+
+  // Whether to keep the rotation component of rig_from_world constant.
+  // Only takes effect when refine_rig_from_world is true.
+  // When true, only translation is refined.
+  bool constant_rig_from_world_rotation = false;
 
   // Whether to print a final summary.
   bool print_summary = true;
@@ -168,6 +179,11 @@ struct BundleAdjustmentOptions {
   int max_num_images_direct_dense_gpu_solver = 200;
   int max_num_images_direct_sparse_gpu_solver = 4000;
 
+  // Whether to automatically select solver type based on problem size.
+  // When false, uses the linear_solver_type and preconditioner_type
+  // from solver_options directly.
+  bool auto_select_solver_type = true;
+
   // Ceres-Solver options.
   ceres::Solver::Options solver_options;
 
@@ -186,9 +202,8 @@ struct BundleAdjustmentOptions {
 #endif  // CERES_VERSION_MAJOR
   }
 
-  // Create a new loss function based on the specified options. The caller
-  // takes ownership of the loss function.
-  ceres::LossFunction* CreateLossFunction() const;
+  // Create loss function for given options.
+  std::unique_ptr<ceres::LossFunction> CreateLossFunction() const;
 
   // Create options tailored for given bundle adjustment config and problem.
   ceres::Solver::Options CreateSolverOptions(
@@ -199,14 +214,20 @@ struct BundleAdjustmentOptions {
 };
 
 struct PosePriorBundleAdjustmentOptions {
-  // Whether to use a robust loss on prior locations.
-  bool use_robust_loss_on_prior_position = false;
+  // Fallback if no prior position covariance is provided.
+  double prior_position_fallback_stddev = 1.0;
+
+  // Loss function for prior position loss.
+  BundleAdjustmentOptions::LossFunctionType prior_position_loss_function_type =
+      BundleAdjustmentOptions::LossFunctionType::TRIVIAL;
 
   // Threshold on the residual for the robust loss.
   double prior_position_loss_scale = std::sqrt(kChiSquare95ThreeDof);
 
   // Sim3 alignment options.
   RANSACOptions alignment_ransac_options;
+
+  bool Check() const;
 };
 
 class BundleAdjuster {
@@ -235,7 +256,7 @@ std::unique_ptr<BundleAdjuster> CreatePosePriorBundleAdjuster(
     BundleAdjustmentOptions options,
     PosePriorBundleAdjustmentOptions prior_options,
     BundleAdjustmentConfig config,
-    std::unordered_map<image_t, PosePrior> pose_priors,
+    std::vector<PosePrior> pose_priors,
     Reconstruction& reconstruction);
 
 void PrintSolverSummary(const ceres::Solver::Summary& summary,

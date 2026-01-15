@@ -34,7 +34,6 @@ cmake_minimum_required(VERSION 3.12)
 # Options
 ################################################################################
 
-option(GLOMAP_ENABLED "Whether to enable GLOMAP" OFF)
 option(SIMD_ENABLED "Whether to enable SIMD optimizations" ON)
 option(OPENMP_ENABLED "Whether to enable OpenMP parallelization" ON)
 option(IPO_ENABLED "Whether to enable interprocedural optimization" ON)
@@ -47,11 +46,13 @@ option(ASAN_ENABLED "Whether to enable AddressSanitizer flags" OFF)
 option(TSAN_ENABLED "Whether to enable ThreadSanitizer flags" OFF)
 option(UBSAN_ENABLED "Whether to enable UndefinedBehaviorSanitizer flags" OFF)
 option(PROFILING_ENABLED "Whether to enable google-perftools linker flags" OFF)
+option(WERROR_ENABLED "Whether to treat compiler warnings as errors" OFF)
 option(CCACHE_ENABLED "Whether to enable compiler caching, if available" ON)
 option(CGAL_ENABLED "Whether to enable the CGAL library" ON)
 option(LSD_ENABLED "Whether to enable the LSD library" ON)
 option(DOWNLOAD_ENABLED "Whether to enable (automatic) download of resources (requires Curl/OpenSSL)" ON)
 option(UNINSTALL_ENABLED "Whether to create a target to 'uninstall' colmap" ON)
+option(BENCHMARK_ENABLED "Whether to enable runtime benchmarking support" OFF)
 option(FETCH_POSELIB "Whether to consume PoseLib using FetchContent or find_package" ON)
 option(FETCH_FAISS "Whether to consume faiss using FetchContent or find_package" ON)
 option(ALL_SOURCE_TARGET "Whether to create a target for all source files (for Visual Studio / XCode development)" OFF)
@@ -255,10 +256,12 @@ include_directories(src)
 link_directories(${COLMAP_LINK_DIRS})
 
 add_subdirectory(src/colmap)
-if(GLOMAP_ENABLED)
-    add_subdirectory(src/glomap)
-endif()
+add_subdirectory(src/glomap)
 add_subdirectory(src/thirdparty)
+
+if(BENCHMARK_ENABLED)
+    add_subdirectory(benchmark/runtime)
+endif()
 
 ################################################################################
 # Generate source groups for Visual Studio, XCode, etc.
@@ -375,6 +378,9 @@ set(COLMAP_EXPORT_LIBS
     colmap_sensor
     colmap_sfm
     colmap_util
+    colmap_glomap_estimators
+    colmap_glomap_scene
+    colmap_glomap_sfm
     # Third-party.
     colmap_poisson_recon
     colmap_vlfeat

@@ -29,6 +29,7 @@
 
 #include "colmap/estimators/generalized_relative_pose.h"
 
+#include "colmap/estimators/poselib_utils.h"
 #include "colmap/geometry/essential_matrix.h"
 #include "colmap/math/random.h"
 #include "colmap/util/eigen_alignment.h"
@@ -53,10 +54,8 @@ void GR6PEstimator::Estimate(const std::vector<X_t>& points1,
   std::vector<Eigen::Vector3d> rays_in_rig1(6);
   std::vector<Eigen::Vector3d> rays_in_rig2(6);
   for (int i = 0; i < 6; ++i) {
-    origins_in_rig1[i] = points1[i].cam_from_rig.rotation.inverse() *
-                         -points1[i].cam_from_rig.translation;
-    origins_in_rig2[i] = points2[i].cam_from_rig.rotation.inverse() *
-                         -points2[i].cam_from_rig.translation;
+    origins_in_rig1[i] = points1[i].cam_from_rig.TgtOriginInSrc();
+    origins_in_rig2[i] = points2[i].cam_from_rig.TgtOriginInSrc();
     rays_in_rig1[i] =
         points1[i].cam_from_rig.rotation.inverse() * points1[i].ray_in_cam;
     rays_in_rig2[i] =
@@ -69,8 +68,7 @@ void GR6PEstimator::Estimate(const std::vector<X_t>& points1,
 
   rigs2_from_rigs1->reserve(poses.size());
   for (const poselib::CameraPose& pose : poses) {
-    rigs2_from_rigs1->emplace_back(
-        Eigen::Quaterniond(pose.q(0), pose.q(1), pose.q(2), pose.q(3)), pose.t);
+    rigs2_from_rigs1->emplace_back(ConvertPoseLibPoseToRigid3d(pose));
   }
 }
 

@@ -29,7 +29,6 @@
 
 #include "colmap/controllers/incremental_pipeline.h"
 
-#include "colmap/estimators/alignment.h"
 #include "colmap/geometry/rigid3_matchers.h"
 #include "colmap/scene/database.h"
 #include "colmap/scene/reconstruction_matchers.h"
@@ -42,7 +41,7 @@ namespace colmap {
 namespace {
 
 TEST(IncrementalPipeline, WithoutNoise) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -57,8 +56,7 @@ TEST(IncrementalPipeline, WithoutNoise) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   IncrementalPipeline mapper(std::make_shared<IncrementalPipelineOptions>(),
-                             /*image_path=*/"",
-                             database_path,
+                             database,
                              reconstruction_manager);
   mapper.Run();
 
@@ -70,7 +68,7 @@ TEST(IncrementalPipeline, WithoutNoise) {
 }
 
 TEST(IncrementalPipeline, WithoutNoiseAndWithNonTrivialFrames) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -89,10 +87,7 @@ TEST(IncrementalPipeline, WithoutNoiseAndWithNonTrivialFrames) {
     auto reconstruction_manager = std::make_shared<ReconstructionManager>();
     auto options = std::make_shared<IncrementalPipelineOptions>();
     options->ba_refine_sensor_from_rig = refine_sensor_from_rig;
-    IncrementalPipeline mapper(options,
-                               /*image_path=*/"",
-                               database_path,
-                               reconstruction_manager);
+    IncrementalPipeline mapper(options, database, reconstruction_manager);
     mapper.Run();
 
     ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -105,8 +100,37 @@ TEST(IncrementalPipeline, WithoutNoiseAndWithNonTrivialFrames) {
   }
 }
 
+TEST(IncrementalPipeline, UnknownSensorFromRigExitsGracefully) {
+  const auto database_path = CreateTestDir() / "database.db";
+
+  auto database = Database::Open(database_path);
+  Reconstruction gt_reconstruction;
+  SyntheticDatasetOptions synthetic_dataset_options;
+  synthetic_dataset_options.num_rigs = 2;
+  synthetic_dataset_options.num_cameras_per_rig = 3;
+  synthetic_dataset_options.num_frames_per_rig = 5;
+  synthetic_dataset_options.num_points3D = 50;
+  synthetic_dataset_options.camera_has_prior_focal_length = false;
+  synthetic_dataset_options.sensor_from_rig_translation_stddev = 0.05;
+  synthetic_dataset_options.sensor_from_rig_rotation_stddev = 30;
+  SynthesizeDataset(
+      synthetic_dataset_options, &gt_reconstruction, database.get());
+
+  // Set one of the sensor from rig to unknown.
+  auto rig = database->ReadAllRigs()[0];
+  rig.NonRefSensors().begin()->second.reset();
+  database->UpdateRig(rig);
+
+  auto reconstruction_manager = std::make_shared<ReconstructionManager>();
+  auto options = std::make_shared<IncrementalPipelineOptions>();
+  IncrementalPipeline mapper(options, database, reconstruction_manager);
+  mapper.Run();
+
+  ASSERT_EQ(reconstruction_manager->Size(), 0);
+}
+
 TEST(IncrementalPipeline, WithNonTrivialFramesAndConstantRigsAndCameras) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -128,10 +152,7 @@ TEST(IncrementalPipeline, WithNonTrivialFramesAndConstantRigsAndCameras) {
   auto options = std::make_shared<IncrementalPipelineOptions>();
   options->constant_rigs.insert(kConstantRigId);
   options->constant_cameras.insert(kConstantCameraId);
-  IncrementalPipeline mapper(options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -155,7 +176,7 @@ TEST(IncrementalPipeline, WithNonTrivialFramesAndConstantRigsAndCameras) {
 }
 
 TEST(IncrementalPipeline, WithoutNoiseAndWithPanoramicNonTrivialFrames) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -174,10 +195,7 @@ TEST(IncrementalPipeline, WithoutNoiseAndWithPanoramicNonTrivialFrames) {
     auto reconstruction_manager = std::make_shared<ReconstructionManager>();
     auto options = std::make_shared<IncrementalPipelineOptions>();
     options->ba_refine_sensor_from_rig = refine_sensor_from_rig;
-    IncrementalPipeline mapper(options,
-                               /*image_path=*/"",
-                               database_path,
-                               reconstruction_manager);
+    IncrementalPipeline mapper(options, database, reconstruction_manager);
     mapper.Run();
 
     ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -189,7 +207,7 @@ TEST(IncrementalPipeline, WithoutNoiseAndWithPanoramicNonTrivialFrames) {
 }
 
 TEST(IncrementalPipeline, WithPriorFocalLength) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -204,8 +222,7 @@ TEST(IncrementalPipeline, WithPriorFocalLength) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   IncrementalPipeline mapper(std::make_shared<IncrementalPipelineOptions>(),
-                             /*image_path=*/"",
-                             database_path,
+                             database,
                              reconstruction_manager);
   mapper.Run();
 
@@ -217,7 +234,7 @@ TEST(IncrementalPipeline, WithPriorFocalLength) {
 }
 
 TEST(IncrementalPipeline, WithNoise) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -234,8 +251,7 @@ TEST(IncrementalPipeline, WithNoise) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   IncrementalPipeline mapper(std::make_shared<IncrementalPipelineOptions>(),
-                             /*image_path=*/"",
-                             database_path,
+                             database,
                              reconstruction_manager);
   mapper.Run();
 
@@ -249,7 +265,7 @@ TEST(IncrementalPipeline, WithNoise) {
 }
 
 TEST(IncrementalPipeline, IgnoreRedundantPoints3D) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -265,10 +281,7 @@ TEST(IncrementalPipeline, IgnoreRedundantPoints3D) {
   auto options = std::make_shared<IncrementalPipelineOptions>();
   options->mapper.ba_global_ignore_redundant_points3D = true;
   options->mapper.ba_global_ignore_redundant_points3D_min_coverage_gain = 0.5;
-  IncrementalPipeline mapper(options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -279,7 +292,7 @@ TEST(IncrementalPipeline, IgnoreRedundantPoints3D) {
 }
 
 TEST(IncrementalPipeline, StructureLessRegistrationOnly) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -294,10 +307,7 @@ TEST(IncrementalPipeline, StructureLessRegistrationOnly) {
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   auto options = std::make_shared<IncrementalPipelineOptions>();
   options->structure_less_registration_only = true;
-  IncrementalPipeline mapper(options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -308,7 +318,7 @@ TEST(IncrementalPipeline, StructureLessRegistrationOnly) {
 }
 
 TEST(IncrementalPipeline, MultiReconstruction) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction1;
@@ -327,10 +337,7 @@ TEST(IncrementalPipeline, MultiReconstruction) {
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   auto mapper_options = std::make_shared<IncrementalPipelineOptions>();
   mapper_options->min_model_size = 4;
-  IncrementalPipeline mapper(mapper_options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(mapper_options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 2);
@@ -354,7 +361,7 @@ TEST(IncrementalPipeline, MultiReconstruction) {
 }
 
 TEST(IncrementalPipeline, FixExistingFrames) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -387,10 +394,7 @@ TEST(IncrementalPipeline, FixExistingFrames) {
       }
     }
     options->fix_existing_frames = fix_existing_frames;
-    IncrementalPipeline mapper(options,
-                               /*image_path=*/"",
-                               database_path,
-                               reconstruction_manager);
+    IncrementalPipeline mapper(options, database, reconstruction_manager);
     mapper.Run();
 
     ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -402,7 +406,7 @@ TEST(IncrementalPipeline, FixExistingFrames) {
 }
 
 TEST(IncrementalPipeline, ChainedMatches) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -418,8 +422,7 @@ TEST(IncrementalPipeline, ChainedMatches) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   IncrementalPipeline mapper(std::make_shared<IncrementalPipelineOptions>(),
-                             /*image_path=*/"",
-                             database_path,
+                             database,
                              reconstruction_manager);
   mapper.Run();
 
@@ -431,7 +434,7 @@ TEST(IncrementalPipeline, ChainedMatches) {
 }
 
 TEST(IncrementalPipeline, PriorBasedSfMWithoutNoise) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -440,12 +443,12 @@ TEST(IncrementalPipeline, PriorBasedSfMWithoutNoise) {
   synthetic_dataset_options.num_cameras_per_rig = 1;
   synthetic_dataset_options.num_frames_per_rig = 10;
   synthetic_dataset_options.num_points3D = 100;
-  synthetic_dataset_options.use_prior_position = true;
-  synthetic_dataset_options.prior_position_stddev = 0.0;
+  synthetic_dataset_options.prior_position = true;
   SynthesizeDataset(
       synthetic_dataset_options, &gt_reconstruction, database.get());
   SyntheticNoiseOptions synthetic_noise_options;
   synthetic_noise_options.point2D_stddev = 0.5;
+  synthetic_noise_options.prior_position_stddev = 0.0;
   SynthesizeNoise(synthetic_noise_options, &gt_reconstruction, database.get());
 
   std::shared_ptr<IncrementalPipelineOptions> mapper_options =
@@ -453,10 +456,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithoutNoise) {
   mapper_options->use_prior_position = true;
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
-  IncrementalPipeline mapper(mapper_options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(mapper_options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -473,7 +473,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithoutNoise) {
 }
 
 TEST(IncrementalPipeline, PriorBasedSfMWithoutNoiseAndWithNonTrivialFrames) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -484,8 +484,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithoutNoiseAndWithNonTrivialFrames) {
   synthetic_dataset_options.num_points3D = 100;
   synthetic_dataset_options.camera_has_prior_focal_length = false;
 
-  synthetic_dataset_options.use_prior_position = true;
-  synthetic_dataset_options.prior_position_stddev = 0.0;
+  synthetic_dataset_options.prior_position = true;
   SynthesizeDataset(
       synthetic_dataset_options, &gt_reconstruction, database.get());
 
@@ -496,10 +495,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithoutNoiseAndWithNonTrivialFrames) {
   mapper_options->use_robust_loss_on_prior_position = true;
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
-  IncrementalPipeline mapper(mapper_options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(mapper_options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -512,7 +508,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithoutNoiseAndWithNonTrivialFrames) {
 }
 
 TEST(IncrementalPipeline, PriorBasedSfMWithNoise) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -521,12 +517,12 @@ TEST(IncrementalPipeline, PriorBasedSfMWithNoise) {
   synthetic_dataset_options.num_cameras_per_rig = 1;
   synthetic_dataset_options.num_frames_per_rig = 7;
   synthetic_dataset_options.num_points3D = 100;
-  synthetic_dataset_options.use_prior_position = true;
-  synthetic_dataset_options.prior_position_stddev = 1.5;
+  synthetic_dataset_options.prior_position = true;
   SynthesizeDataset(
       synthetic_dataset_options, &gt_reconstruction, database.get());
   SyntheticNoiseOptions synthetic_noise_options;
   synthetic_noise_options.point2D_stddev = 0.5;
+  synthetic_noise_options.prior_position_stddev = 1.5;
   SynthesizeNoise(synthetic_noise_options, &gt_reconstruction, database.get());
 
   std::shared_ptr<IncrementalPipelineOptions> mapper_options =
@@ -536,10 +532,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithNoise) {
   mapper_options->use_robust_loss_on_prior_position = true;
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
-  IncrementalPipeline mapper(mapper_options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(mapper_options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -552,7 +545,7 @@ TEST(IncrementalPipeline, PriorBasedSfMWithNoise) {
 }
 
 TEST(IncrementalPipeline, GPSPriorBasedSfMWithNoise) {
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -562,13 +555,14 @@ TEST(IncrementalPipeline, GPSPriorBasedSfMWithNoise) {
   synthetic_dataset_options.num_frames_per_rig = 10;
   synthetic_dataset_options.num_points3D = 100;
 
-  synthetic_dataset_options.use_prior_position = true;
-  synthetic_dataset_options.use_geographic_coords_prior = true;
-  synthetic_dataset_options.prior_position_stddev = 1.5;
+  synthetic_dataset_options.prior_position = true;
+  synthetic_dataset_options.prior_position_coordinate_system =
+      PosePrior::CoordinateSystem::WGS84;
   SynthesizeDataset(
       synthetic_dataset_options, &gt_reconstruction, database.get());
   SyntheticNoiseOptions synthetic_noise_options;
   synthetic_noise_options.point2D_stddev = 0.5;
+  synthetic_noise_options.prior_position_stddev = 1.5;
   SynthesizeNoise(synthetic_noise_options, &gt_reconstruction, database.get());
 
   std::shared_ptr<IncrementalPipelineOptions> mapper_options =
@@ -578,10 +572,7 @@ TEST(IncrementalPipeline, GPSPriorBasedSfMWithNoise) {
   mapper_options->use_robust_loss_on_prior_position = true;
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
-  IncrementalPipeline mapper(mapper_options,
-                             /*image_path=*/"",
-                             database_path,
-                             reconstruction_manager);
+  IncrementalPipeline mapper(mapper_options, database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
@@ -596,7 +587,7 @@ TEST(IncrementalPipeline, GPSPriorBasedSfMWithNoise) {
 TEST(IncrementalPipeline, SfMWithRandomSeedStability) {
   SetPRNGSeed(1);
 
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -605,7 +596,7 @@ TEST(IncrementalPipeline, SfMWithRandomSeedStability) {
   synthetic_dataset_options.num_cameras_per_rig = 1;
   synthetic_dataset_options.num_frames_per_rig = 3;
   synthetic_dataset_options.num_points3D = 50;
-  synthetic_dataset_options.use_prior_position = false;
+  synthetic_dataset_options.prior_position = false;
   SynthesizeDataset(
       synthetic_dataset_options, &gt_reconstruction, database.get());
   SyntheticNoiseOptions synthetic_noise_options;
@@ -618,10 +609,8 @@ TEST(IncrementalPipeline, SfMWithRandomSeedStability) {
     mapper_options->num_threads = num_threads;
     mapper_options->random_seed = random_seed;
     auto reconstruction_manager = std::make_shared<ReconstructionManager>();
-    IncrementalPipeline mapper(mapper_options,
-                               /*image_path=*/"",
-                               database_path,
-                               reconstruction_manager);
+    IncrementalPipeline mapper(
+        mapper_options, database, reconstruction_manager);
     mapper.Run();
     EXPECT_EQ(reconstruction_manager->Size(), 1);
     return reconstruction_manager;
@@ -660,7 +649,7 @@ TEST(IncrementalPipeline, SfMWithRandomSeedStability) {
 TEST(IncrementalPipeline, PriorBasedSfMWithRandomSeedStability) {
   SetPRNGSeed(1);
 
-  const std::string database_path = CreateTestDir() + "/database.db";
+  const auto database_path = CreateTestDir() / "database.db";
 
   auto database = Database::Open(database_path);
   Reconstruction gt_reconstruction;
@@ -669,12 +658,12 @@ TEST(IncrementalPipeline, PriorBasedSfMWithRandomSeedStability) {
   synthetic_dataset_options.num_cameras_per_rig = 1;
   synthetic_dataset_options.num_frames_per_rig = 5;
   synthetic_dataset_options.num_points3D = 50;
-  synthetic_dataset_options.use_prior_position = true;
-  synthetic_dataset_options.prior_position_stddev = 1.0;
+  synthetic_dataset_options.prior_position = true;
   SynthesizeDataset(
       synthetic_dataset_options, &gt_reconstruction, database.get());
   SyntheticNoiseOptions synthetic_noise_options;
   synthetic_noise_options.point2D_stddev = 0.5;
+  synthetic_noise_options.prior_position_stddev = 1.0;
   SynthesizeNoise(synthetic_noise_options, &gt_reconstruction, database.get());
 
   auto run_mapper = [&](int num_threads, int random_seed) {
@@ -683,10 +672,8 @@ TEST(IncrementalPipeline, PriorBasedSfMWithRandomSeedStability) {
     mapper_options->num_threads = num_threads;
     mapper_options->random_seed = random_seed;
     auto reconstruction_manager = std::make_shared<ReconstructionManager>();
-    IncrementalPipeline mapper(mapper_options,
-                               /*image_path=*/"",
-                               database_path,
-                               reconstruction_manager);
+    IncrementalPipeline mapper(
+        mapper_options, database, reconstruction_manager);
     mapper.Run();
     EXPECT_EQ(reconstruction_manager->Size(), 1);
     return reconstruction_manager;

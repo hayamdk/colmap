@@ -58,6 +58,9 @@ class Frame {
   // Check whether the data is associated with the frame.
   inline bool HasDataId(data_t data_id) const;
 
+  // Clear all the associated data.
+  void ClearDataIds();
+
   // Access the unique identifier of the rig. Note that multiple frames
   // might share the same rig.
   inline rig_t RigId() const;
@@ -67,7 +70,7 @@ class Frame {
   // Access to the underlying, shared rig object.
   // This is typically only set when the frame was added to a reconstruction.
   inline class Rig* RigPtr() const;
-  inline void SetRigPtr(class Rig* rig);
+  void SetRigPtr(class Rig* rig);
   inline void ResetRigPtr();
   // Check if the frame has a non-trivial rig.
   inline bool HasRigPtr() const;
@@ -106,6 +109,8 @@ class Frame {
 
  private:
   frame_t frame_id_ = kInvalidFrameId;
+  rig_t rig_id_ = kInvalidRigId;
+
   std::set<data_t> data_ids_;
 
   // Store the rig_from_world transformation and an optional rig calibration.
@@ -113,8 +118,6 @@ class Frame {
   // case, where rig modeling is no longer needed.
   std::optional<Rigid3d> rig_from_world_;
 
-  // Rig calibration.
-  rig_t rig_id_ = kInvalidRigId;
   class Rig* rig_ptr_ = nullptr;
 };
 
@@ -156,21 +159,6 @@ void Frame::SetRigId(const rig_t rig_id) {
 bool Frame::HasRigId() const { return rig_id_ != kInvalidRigId; }
 
 Rig* Frame::RigPtr() const { return THROW_CHECK_NOTNULL(rig_ptr_); }
-
-void Frame::SetRigPtr(class Rig* rig) {
-  THROW_CHECK_NOTNULL(rig);
-  THROW_CHECK_NE(rig->RigId(), kInvalidRigId);
-  for (const auto& data_id : data_ids_) {
-    THROW_CHECK(rig->HasSensor(data_id.sensor_id));
-  }
-  if (HasRigPtr()) {
-    rig_id_ = rig->RigId();
-    rig_ptr_ = rig;
-  } else {
-    THROW_CHECK_EQ(rig->RigId(), rig_id_);
-    rig_ptr_ = rig;
-  }
-}
 
 void Frame::ResetRigPtr() { rig_ptr_ = nullptr; }
 
