@@ -37,26 +37,25 @@
 namespace colmap {
 namespace {
 
+// Alias for clarity: we're working with frame pairs, not image pairs.
+using frame_pair_t = image_pair_t;
+
 // Clusters nodes using union-find based on edge weights.
 //
 // Algorithm:
-//   1. Merge nodes connected by strong edges (weight > threshold).
-//   2. Iteratively merge clusters connected by at least min_weak_edges_to_merge
-//      weaker edges (weight >= weak_edge_multiplier * threshold).
-//   3. Assign sequential cluster IDs based on union-find roots.
+//   Merge nodes connected by strong edges (weight > threshold).
 //
-// The iterative refinement helps avoid over-segmentation when the connection
-// between two groups of nodes is distributed across multiple weaker edges.
 std::unordered_map<frame_t, int> EstablishStrongClusters(
     const ReconstructionClusteringOptions& options,
     const std::unordered_set<frame_t>& nodes,
-    const std::unordered_map<image_pair_t, int>& edge_weights,
+    const std::unordered_map<frame_pair_t, int>& edge_weights,
     double edge_weight_threshold) {
-  std::unordered_map<frame_t, int> cluster_ids;
   UnionFind<frame_t> uf;
   uf.Reserve(nodes.size());
 
-  // Phase 1: Create initial clusters from strong edges (weight > threshold).
+  // Create initial clusters from strong edges (weight > threshold).
+  // TODO(lpanaf): use different thresholds for different edges based on local
+  // statistics.
   for (const auto& [pair_id, weight] : edge_weights) {
     if (weight >= edge_weight_threshold) {
       const auto [frame_id1, frame_id2] = PairIdToImagePair(pair_id);
@@ -64,78 +63,50 @@ std::unordered_map<frame_t, int> EstablishStrongClusters(
     }
   }
 
-  // Phase 2: Iteratively merge clusters connected by multiple weaker edges.
-  // Two clusters are merged if they share >= min_weak_edges_to_merge edges with
-  // weight >= weak_edge_multiplier * threshold. This continues until no more
-  // merges occur (or max max_clustering_iterations iterations).
-  bool changed = true;
-  int iteration = 0;
-  while (changed) {
-    changed = false;
-    iteration++;
+  // Assign sequential cluster IDs (largest cluster gets ID 0).
+  uf.Compress();
+  std::unordered_map<frame_t, std::vector<frame_t>> root_to_nodes;
+  for (const auto& [node, root] : uf.Parents()) {
+    root_to_nodes[root].push_back(node);
+  }
 
-    if (iteration > options.max_clustering_iterations) {
-      break;
-    }
+  // Phase 3: Collect nodes by their union-find roots, sort by number of
+  // frames, and assign sequential cluster IDs (largest cluster gets ID 0).
+  std::vector<std::vector<frame_t>> sorted_clusters;
+  sorted_clusters.reserve(root_to_nodes.size());
+  for (auto& [root, cluster_nodes] : root_to_nodes) {
+    sorted_clusters.push_back(std::move(cluster_nodes));
+  }
+  std::sort(sorted_clusters.begin(),
+            sorted_clusters.end(),
+            [](const auto& a, const auto& b) { return a.size() > b.size(); });
 
-    // Count edges between each pair of cluster roots.
-    std::unordered_map<frame_t, std::unordered_map<frame_t, int>> num_pairs;
-    for (const auto& [pair_id, weight] : edge_weights) {
-      if (weight < options.weak_edge_multiplier * edge_weight_threshold)
-        continue;
-
-      const auto [frame_id1, frame_id2] = PairIdToImagePair(pair_id);
-      frame_t root1 = uf.Find(frame_id1);
-      frame_t root2 = uf.Find(frame_id2);
-
-      if (root1 == root2) continue;  // Already in same cluster.
-
-      num_pairs[root1][root2]++;
-      num_pairs[root2][root1]++;
-    }
-
-    // Merge clusters that share >= min_weak_edges_to_merge connecting edges.
-    for (const auto& [root1, counter] : num_pairs) {
-      for (const auto& [root2, count] : counter) {
-        if (root1 <= root2) continue;  // Process each pair once.
-
-        if (count >= options.min_weak_edges_to_merge) {
-          changed = true;
-          uf.Union(root1, root2);
-        }
+  // Assign cluster IDs based on sorted order.
+  std::unordered_map<frame_t, int> cluster_ids;
+  int num_valid_clusters = 0;
+  for (size_t cluster_id = 0; cluster_id < sorted_clusters.size();
+       ++cluster_id) {
+    const auto& cluster_nodes = sorted_clusters[cluster_id];
+    if (cluster_nodes.size() >= size_t(options.min_num_reg_frames)) {
+      for (const frame_t node : cluster_nodes) {
+        cluster_ids[node] = static_cast<int>(num_valid_clusters);
+      }
+      num_valid_clusters++;
+    } else {
+      // Clusters smaller than min_num_reg_frames are discarded.
+      for (const frame_t node : cluster_nodes) {
+        cluster_ids[node] = -1;
       }
     }
   }
 
-  // Phase 3: Assign sequential cluster IDs based on union-find roots.
-  std::unordered_map<frame_t, int> root_to_cluster;
-  int next_cluster_id = 0;
-
-  for (const frame_t node : nodes) {
-    frame_t root = uf.Find(node);
-    auto it = root_to_cluster.find(root);
-    if (it == root_to_cluster.end()) {
-      root_to_cluster[root] = next_cluster_id++;
-    }
-    cluster_ids[node] = root_to_cluster[root];
+  // Ensure all nodes are assigned a cluster ID.
+  for (const auto node : nodes) {
+    if (!uf.FindIfExists(node).has_value()) cluster_ids[node] = -1;
   }
 
-  // Count clusters with at least kMinClusterSize frames.
-  constexpr int kMinClusterSize = 2;
-  std::unordered_map<int, int> cluster_sizes;
-  for (const auto& [node, cluster_id] : cluster_ids) {
-    cluster_sizes[cluster_id]++;
-  }
-  int num_valid_clusters = 0;
-  for (const auto& [cluster_id, size] : cluster_sizes) {
-    if (size >= kMinClusterSize) {
-      num_valid_clusters++;
-    }
-  }
-
-  LOG(INFO) << "Clustering took " << iteration << " iterations. "
-            << "Frames are grouped into " << num_valid_clusters
-            << " clusters (size >= " << kMinClusterSize << ")";
+  LOG(INFO) << "Frames are grouped into " << num_valid_clusters
+            << " clusters (size >= " << options.min_num_reg_frames << ")";
 
   return cluster_ids;
 }
@@ -145,11 +116,18 @@ std::unordered_map<frame_t, int> EstablishStrongClusters(
 std::unordered_map<frame_t, int> ClusterReconstructionFrames(
     const ReconstructionClusteringOptions& options,
     Reconstruction& reconstruction) {
+  options.Check();
+
   // Step 1: Compute covisibility counts between all frame pairs.
   // For each 3D point, increment the count for every pair of frames that sees
   // it.
-  std::unordered_map<image_pair_t, int> frame_covisibility_count;
+  std::unordered_map<frame_pair_t, int> frame_covisibility_count;
   std::unordered_set<frame_t> nodes;
+  // Insert all registered frames to the nodes set.
+  for (const frame_t frame_id : reconstruction.RegFrameIds()) {
+    nodes.insert(frame_id);
+  }
+
   for (const auto& [point3D_id, point3D] : reconstruction.Points3D()) {
     if (point3D.track.Length() <= 2) continue;
 
@@ -165,14 +143,14 @@ std::unordered_map<frame_t, int> ClusterReconstructionFrames(
         const image_t image_id2 = point3D.track.Element(j).image_id;
         const frame_t frame_id2 = reconstruction.Image(image_id2).FrameId();
         if (frame_id1 == frame_id2) continue;
-        const image_pair_t pair_id = ImagePairToPairId(frame_id1, frame_id2);
+        const frame_pair_t pair_id = ImagePairToPairId(frame_id1, frame_id2);
         frame_covisibility_count[pair_id]++;
       }
     }
   }
 
   // Filter edges to keep only reliable connections.
-  std::unordered_map<image_pair_t, int> edge_weights;
+  std::unordered_map<frame_pair_t, int> edge_weights;
   for (const auto& [pair_id, count] : frame_covisibility_count) {
     if (count < options.min_covisibility_count) continue;
     edge_weights[pair_id] = count;
@@ -195,7 +173,7 @@ std::unordered_map<frame_t, int> ClusterReconstructionFrames(
   const auto [median, mad] = MedianAbsoluteDeviation(std::move(weight_values));
   const double threshold =
       std::max(median - mad, options.min_edge_weight_threshold);
-  LOG(INFO) << "Threshold for Strong Clustering: " << threshold;
+  LOG(INFO) << "Threshold for strong cluster: " << threshold;
 
   // Cluster frames based on covisibility weights.
   return EstablishStrongClusters(options, nodes, edge_weights, threshold);

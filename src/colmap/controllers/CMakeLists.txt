@@ -46,6 +46,7 @@ COLMAP_ADD_LIBRARY(
         option_manager.h option_manager.cc
         reconstruction_clustering.h reconstruction_clustering.cc
         rotation_averaging.h rotation_averaging.cc
+        undistorters.h undistorters.cc
     PUBLIC_LINK_LIBS
         colmap_estimators
         colmap_feature
@@ -59,7 +60,6 @@ COLMAP_ADD_LIBRARY(
         colmap_math
         colmap_mvs
         colmap_sfm
-        colmap_glomap_sfm
         Ceres::ceres
         Boost::boost
 )
@@ -129,5 +129,10 @@ COLMAP_ADD_TEST(
 COLMAP_ADD_TEST(
     NAME reconstruction_clustering_test
     SRCS reconstruction_clustering_test.cc
+    LINK_LIBS colmap_controllers
+)
+COLMAP_ADD_TEST(
+    NAME undistorters_test
+    SRCS undistorters_test.cc
     LINK_LIBS colmap_controllers
 )
