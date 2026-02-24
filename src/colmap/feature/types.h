@@ -66,6 +66,11 @@ struct FeatureKeypoint {
   void Rescale(float scale);
   void Rescale(float scale_x, float scale_y);
 
+  // Rotate the feature location and shape by k * 90 degrees counter-clockwise
+  // around the image center. The width and height are the dimensions of the
+  // image the keypoint is currently defined on.
+  void Rot90(int k, int width, int height);
+
   // Compute shape parameters from affine shape.
   float ComputeScale() const;
   float ComputeScaleX() const;
@@ -94,9 +99,9 @@ struct FeatureKeypoint {
   }
 };
 
-typedef Eigen::Matrix<uint8_t, 1, Eigen::Dynamic, Eigen::RowMajor>
-    FeatureDescriptor;
-typedef std::vector<FeatureKeypoint> FeatureKeypoints;
+using FeatureDescriptor =
+    Eigen::Matrix<uint8_t, 1, Eigen::Dynamic, Eigen::RowMajor>;
+using FeatureKeypoints = std::vector<FeatureKeypoint>;
 
 // Matrix types for descriptor data.
 using FeatureDescriptorsData =
@@ -162,6 +167,6 @@ struct FeatureMatch {
   }
 };
 
-typedef std::vector<FeatureMatch> FeatureMatches;
+using FeatureMatches = std::vector<FeatureMatch>;
 
 }  // namespace colmap

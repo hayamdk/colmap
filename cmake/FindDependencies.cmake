@@ -264,11 +264,19 @@ if(ONNX_ENABLED)
                 )
             endif()
         elseif(IS_LINUX)
-            FetchContent_Declare(onnxruntime
-                URL https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-gpu-${ONNX_VERSION}.tgz
-                URL_HASH SHA256=1c468821456b7863640555e31ee5b71e56bb959874b9db0dbf79503997993673
-                ${_fetch_content_declare_args}
-            )
+            if(IS_ARM64)
+                FetchContent_Declare(onnxruntime
+                    URL https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-aarch64-${ONNX_VERSION}.tgz
+                    URL_HASH SHA256=0f56edd68f7602df790b68b874a46b115add037e88385c6c842bb763b39b9f89
+                    ${_fetch_content_declare_args}
+                )
+            else()
+                FetchContent_Declare(onnxruntime
+                    URL https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-gpu-${ONNX_VERSION}.tgz
+                    URL_HASH SHA256=1c468821456b7863640555e31ee5b71e56bb959874b9db0dbf79503997993673
+                    ${_fetch_content_declare_args}
+                )
+            endif()
         elseif(IS_WINDOWS)
             FetchContent_Declare(onnxruntime
                 URL https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-win-x64-gpu-${ONNX_VERSION}.zip
@@ -279,7 +287,7 @@ if(ONNX_ENABLED)
 
         FetchContent_MakeAvailable(onnxruntime)
 
-        if(IS_LINUX)
+        if(IS_LINUX AND NOT IS_ARM64)
             set(onnxruntime_LIB_DIR_NAME lib64)
         else()
             set(onnxruntime_LIB_DIR_NAME lib)
@@ -290,10 +298,10 @@ if(ONNX_ENABLED)
             file(MAKE_DIRECTORY ${ONNX_INCLUDE_DIR})
             file(COPY ${onnxruntime_SOURCE_DIR}/include/ DESTINATION ${ONNX_INCLUDE_DIR}/)
         endif()
-        set(onnxruntime_LIB_DIR ${onnxruntime_BINARY_DIR}/${onnxruntime_LIB_DIR_NAME})
+        set(onnxruntime_LIB_DIR ${onnxruntime_BINARY_DIR}/lib)
         if(NOT EXISTS ${onnxruntime_LIB_DIR})
             file(MAKE_DIRECTORY ${onnxruntime_LIB_DIR})
-            file(COPY ${onnxruntime_SOURCE_DIR}/lib/ DESTINATION ${onnxruntime_LIB_DIR}/)
+            file(COPY ${onnxruntime_SOURCE_DIR}/lib/ DESTINATION ${onnxruntime_LIB_DIR})
             file(REMOVE_RECURSE ${onnxruntime_LIB_DIR}/cmake)
             file(REMOVE_RECURSE ${onnxruntime_LIB_DIR}/pkgconfig)
         endif()
@@ -303,29 +311,37 @@ if(ONNX_ENABLED)
                 file(MAKE_DIRECTORY ${ONNX_DATA_DIR})
                 file(COPY ${onnxruntime_SOURCE_DIR}/lib/cmake/onnxruntime/ DESTINATION ${ONNX_DATA_DIR}/cmake/)
                 file(REMOVE_RECURSE ${onnxruntime_SOURCE_DIR}/lib/cmake)
+                # The downloaded cmake configs may reference lib64/ (e.g. on Linux x64),
+                # but we install libraries to lib/. Patch the configs to match.
+                if(IS_LINUX AND NOT IS_ARM64)
+                    file(GLOB _onnx_cmake_configs "${ONNX_DATA_DIR}/cmake/*.cmake")
+                    foreach(_config_file ${_onnx_cmake_configs})
+                        file(READ "${_config_file}" _config_content)
+                        string(REPLACE "/lib64/" "/lib/" _config_content "${_config_content}")
+                        file(WRITE "${_config_file}" "${_config_content}")
+                    endforeach()
+                endif()
             endif()
         endif()
 
         set(onnxruntime_CONFIG_DIR_HINTS ${ONNX_DATA_DIR}/cmake CACHE PATH "ONNX Runtime config directory hints")
         set(onnxruntime_INCLUDE_DIR_HINTS ${onnxruntime_BINARY_DIR}/include CACHE PATH "ONNX Runtime include directory hints")
-        set(onnxruntime_LIBRARY_DIR_HINTS ${onnxruntime_BINARY_DIR}/${onnxruntime_LIB_DIR_NAME} CACHE PATH "ONNX Runtime library directory hints")
+        set(onnxruntime_LIBRARY_DIR_HINTS ${onnxruntime_BINARY_DIR}/lib CACHE PATH "ONNX Runtime library directory hints")
         find_package(onnxruntime ${COLMAP_FIND_TYPE})
 
-        install(
-            DIRECTORY "${onnxruntime_BINARY_DIR}/include/"
-            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+        install(DIRECTORY "${onnxruntime_BINARY_DIR}/include/" TYPE INCLUDE)
         if(IS_WINDOWS)
             # On Windows, selectively install DLLs to bin/. Always install core DLLs.
             # For not not supporting TensorRT/ROCM/etc. as a runtime, so not installing it intentionally.
             install(FILES
                 "${onnxruntime_LIB_DIR}/onnxruntime.dll"
                 "${onnxruntime_LIB_DIR}/onnxruntime_providers_shared.dll"
-                DESTINATION "${CMAKE_INSTALL_BINDIR}")
+                TYPE BIN)
             # Only install CUDA provider DLL if CUDA is enabled.
             if(CUDA_ENABLED)
                 install(FILES
                     "${onnxruntime_LIB_DIR}/onnxruntime_providers_cuda.dll"
-                    DESTINATION "${CMAKE_INSTALL_BINDIR}")
+                    TYPE BIN)
             endif()
         else()
             # On Linux/macOS, selectively install library files. Always install core libraries.
@@ -335,26 +351,21 @@ if(ONNX_ENABLED)
                     "${onnxruntime_LIB_DIR}/libonnxruntime.dylib"
                     "${onnxruntime_LIB_DIR}/libonnxruntime.*.dylib"
                     "${onnxruntime_LIB_DIR}/libonnxruntime_providers_shared.dylib")
-                install(FILES ${onnxruntime_CORE_LIBS}
-                    DESTINATION "${onnxruntime_LIB_DIR_NAME}")
+                install(FILES ${onnxruntime_CORE_LIBS} TYPE LIB)
             else()
                 file(GLOB onnxruntime_CORE_LIBS
                     "${onnxruntime_LIB_DIR}/libonnxruntime.so*"
                     "${onnxruntime_LIB_DIR}/libonnxruntime_providers_shared.so*")
-                install(FILES ${onnxruntime_CORE_LIBS}
-                    DESTINATION "${onnxruntime_LIB_DIR_NAME}")
+                install(FILES ${onnxruntime_CORE_LIBS} TYPE LIB)
                 # Only install CUDA provider if CUDA is enabled.
                 if(CUDA_ENABLED)
                     file(GLOB onnxruntime_CUDA_LIBS
                         "${onnxruntime_LIB_DIR}/libonnxruntime_providers_cuda.so*")
-                    install(FILES ${onnxruntime_CUDA_LIBS}
-                        DESTINATION "${onnxruntime_LIB_DIR_NAME}")
+                    install(FILES ${onnxruntime_CUDA_LIBS} TYPE LIB)
                 endif()
             endif()
         endif()
-        install(
-            DIRECTORY "${onnxruntime_BINARY_DIR}/share/"
-            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}")
+        install(DIRECTORY "${onnxruntime_BINARY_DIR}/share/" TYPE DATA)
 
         message(STATUS "Configuring onnxruntime... done")
     else()
