@@ -29,6 +29,7 @@
 
 #include "colmap/controllers/global_pipeline.h"
 
+#include "colmap/estimators/view_graph_calibration.h"
 #include "colmap/math/random.h"
 #include "colmap/scene/database.h"
 #include "colmap/scene/reconstruction_matchers.h"
@@ -58,14 +59,25 @@ TEST(GlobalPipeline, Nominal) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   GlobalPipelineOptions options;
+  ViewGraphCalibrationOptions vgc_options;
+  CalibrateViewGraph(vgc_options, database.get());
   GlobalPipeline mapper(std::move(options), database, reconstruction_manager);
   mapper.Run();
 
   ASSERT_EQ(reconstruction_manager->Size(), 1);
+  auto reconstruction = reconstruction_manager->Get(0);
   EXPECT_THAT(gt_reconstruction,
-              ReconstructionNear(*reconstruction_manager->Get(0),
+              ReconstructionNear(*reconstruction,
                                  /*max_rotation_error_deg=*/1e-2,
                                  /*max_proj_center_error=*/1e-4));
+
+  // After the pipeline runs, point3D.error must be in pixel units, i.e.
+  // equal to what UpdatePoint3DErrors would recompute.
+  ASSERT_GT(reconstruction->NumPoints3D(), 0u);
+  const double mean_after_run = reconstruction->ComputeMeanReprojectionError();
+  reconstruction->UpdatePoint3DErrors();
+  EXPECT_DOUBLE_EQ(mean_after_run,
+                   reconstruction->ComputeMeanReprojectionError());
 }
 
 TEST(GlobalPipeline, SfMWithRandomSeedStability) {
@@ -90,6 +102,10 @@ TEST(GlobalPipeline, SfMWithRandomSeedStability) {
     GlobalPipelineOptions options;
     options.num_threads = num_threads;
     options.random_seed = random_seed;
+    ViewGraphCalibrationOptions vgc_options;
+    vgc_options.random_seed = random_seed;
+    vgc_options.solver_options.num_threads = num_threads;
+    CalibrateViewGraph(vgc_options, database.get());
     auto reconstruction_manager = std::make_shared<ReconstructionManager>();
     GlobalPipeline mapper(std::move(options), database, reconstruction_manager);
     mapper.Run();
@@ -143,6 +159,8 @@ TEST(GlobalPipeline, WithExistingRelativePoses) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   GlobalPipelineOptions options;
+  ViewGraphCalibrationOptions vgc_options;
+  CalibrateViewGraph(vgc_options, database.get());
   GlobalPipeline mapper(std::move(options), database, reconstruction_manager);
   mapper.Run();
 
@@ -185,6 +203,8 @@ TEST(GlobalPipeline, WithNoisyExistingRelativePoses) {
 
   auto reconstruction_manager = std::make_shared<ReconstructionManager>();
   GlobalPipelineOptions options;
+  ViewGraphCalibrationOptions vgc_options;
+  CalibrateViewGraph(vgc_options, database.get());
   GlobalPipeline mapper(std::move(options), database, reconstruction_manager);
   mapper.Run();
 

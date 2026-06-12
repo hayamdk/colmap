@@ -163,6 +163,14 @@ void BindIncrementalPipeline(py::module& m) {
       .def_readwrite("ba_gpu_index",
                      &IncrementalPipelineOptions::ba_gpu_index,
                      "Index of CUDA GPU to use for BA, if available.")
+      .def_readwrite("ba_local_backend",
+                     &Opts::ba_local_backend,
+                     "Bundle adjustment solver backend for local bundle "
+                     "adjustment.")
+      .def_readwrite("ba_global_backend",
+                     &Opts::ba_global_backend,
+                     "Bundle adjustment solver backend for global bundle "
+                     "adjustment.")
       .def_readwrite("use_prior_position",
                      &Opts::use_prior_position,
                      "Whether to use priors on the camera positions.")
@@ -190,6 +198,11 @@ void BindIncrementalPipeline(py::module& m) {
           &Opts::image_names,
           "Optional list of image names to reconstruct. If no images are "
           "specified, all images will be reconstructed by default.")
+      .def_readwrite(
+          "load_all_images",
+          &Opts::load_all_images,
+          "Whether to load all images from the database, including those "
+          "without correspondences. Only useful for triangulation.")
       .def_readwrite("fix_existing_frames",
                      &Opts::fix_existing_frames,
                      "If reconstruction is provided as input, fix the existing "
@@ -626,10 +639,11 @@ void BindIncrementalMapperImpl(py::module& m) {
            "tri_options"_a,
            "normalize_reconstruction"_a = true,
            "Perform multiple rounds of global bundle adjustment.")
-      .def("filter_frames",
-           &IncrementalMapper::FilterFrames,
-           "options"_a,
-           "Filter frames with degenerate camera parameters.")
+      .def(
+          "filter_frames",
+          &IncrementalMapper::FilterFrames,
+          "options"_a,
+          "Filter frames with degenerate camera parameters or no observations.")
       .def("filter_points",
            &IncrementalMapper::FilterPoints,
            "options"_a,

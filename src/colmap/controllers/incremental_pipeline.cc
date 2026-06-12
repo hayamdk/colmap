@@ -30,6 +30,7 @@
 #include "colmap/controllers/incremental_pipeline.h"
 
 #include "colmap/estimators/alignment.h"
+#include "colmap/estimators/bundle_adjustment_caspar.h"
 #include "colmap/estimators/bundle_adjustment_ceres.h"
 #include "colmap/scene/database.h"
 #include "colmap/util/file.h"
@@ -66,6 +67,7 @@ DatabaseCache::Options CreateDatabaseCacheOptions(
       database_cache_options.image_names.insert(image.Name());
     }
   }
+  database_cache_options.load_all_images = options.load_all_images;
   database_cache_options.convert_pose_priors_to_enu =
       options.use_prior_position;
   return database_cache_options;
@@ -158,6 +160,7 @@ BundleAdjustmentOptions IncrementalPipelineOptions::LocalBundleAdjustment()
     const {
   BundleAdjustmentOptions options;
   options.print_summary = false;
+  options.backend = ba_local_backend;
   options.refine_focal_length = ba_refine_focal_length;
   options.refine_principal_point = ba_refine_principal_point;
   options.refine_extra_params = ba_refine_extra_params;
@@ -189,6 +192,9 @@ BundleAdjustmentOptions IncrementalPipelineOptions::LocalBundleAdjustment()
     options.ceres->max_num_images_direct_dense_gpu_solver = ba_max_num_images_direct_dense_gpu_solver;
     options.ceres->max_num_images_direct_sparse_gpu_solver = ba_max_num_images_direct_sparse_gpu_solver;
   }
+  if (options.caspar) {
+    options.caspar->gpu_index = ba_gpu_index;
+  }
   return options;
 }
 
@@ -196,6 +202,7 @@ BundleAdjustmentOptions IncrementalPipelineOptions::GlobalBundleAdjustment()
     const {
   BundleAdjustmentOptions options;
   options.print_summary = false;
+  options.backend = ba_global_backend;
   options.refine_focal_length = ba_refine_focal_length;
   options.refine_principal_point = ba_refine_principal_point;
   options.refine_extra_params = ba_refine_extra_params;
@@ -231,6 +238,9 @@ BundleAdjustmentOptions IncrementalPipelineOptions::GlobalBundleAdjustment()
     options.ceres->max_num_images_direct_dense_gpu_solver = ba_max_num_images_direct_dense_gpu_solver;
     options.ceres->max_num_images_direct_sparse_gpu_solver = ba_max_num_images_direct_sparse_gpu_solver;
   }
+  if (options.caspar) {
+    options.caspar->gpu_index = ba_gpu_index;
+  }
   return options;
 }
 
@@ -251,12 +261,16 @@ bool IncrementalPipelineOptions::Check() const {
   CHECK_OPTION_GT(ba_global_max_num_iterations, 0);
   CHECK_OPTION_GT(ba_local_max_refinements, 0);
   CHECK_OPTION_GE(ba_local_max_refinement_change, 0);
-  CHECK_OPTION_GT(ba_global_max_refinements, 0);
+  CHECK_OPTION_GE(ba_global_max_refinements, 0);
   CHECK_OPTION_GE(ba_global_max_refinement_change, 0);
   CHECK_OPTION_GE(snapshot_frames_freq, 0);
   CHECK_OPTION_GT(prior_position_loss_scale, 0.);
   CHECK_OPTION_GE(num_threads, -1);
   CHECK_OPTION_GE(random_seed, -1);
+#ifndef CASPAR_ENABLED
+  CHECK_OPTION(ba_local_backend != BundleAdjustmentBackend::CASPAR);
+  CHECK_OPTION(ba_global_backend != BundleAdjustmentBackend::CASPAR);
+#endif
   CHECK_OPTION(Mapper().Check());
   CHECK_OPTION(Triangulation().Check());
   return true;
@@ -783,7 +797,8 @@ void IncrementalPipeline::TriangulateReconstruction(
   reconstruction->UpdatePoint3DErrors();
 
   LOG(INFO) << "Extracting colors";
-  reconstruction->ExtractColorsForAllImages(options_->image_path);
+  reconstruction->ExtractColorsForAllImages(options_->image_path,
+                                            options_->num_threads);
 }
 
 void IncrementalPipeline::RegisterCallbacks() {
