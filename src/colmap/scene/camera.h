@@ -101,9 +101,15 @@ struct Camera {
   inline span<const size_t> FocalLengthIdxs() const;
   inline span<const size_t> PrincipalPointIdxs() const;
   inline span<const size_t> ExtraParamsIdxs() const;
+  inline span<const size_t> MetaDataParamsIdxs() const;
 
   // Get intrinsic calibration matrix composed from focal length and principal
   // point parameters, excluding distortion parameters.
+  //
+  // This is the affine part of the projection, which is a projective camera
+  // matrix only for pinhole models. For fisheye models the normalized
+  // coordinates are angular, so callers relying on x ~ K * [R | t] * X must
+  // restrict themselves to IsPerspectivePinhole() cameras.
   Eigen::Matrix3d CalibrationMatrix() const;
 
   // Get human-readable information about the parameter vector ordering.
@@ -121,6 +127,21 @@ struct Camera {
 
   // Check whether camera is already undistorted.
   bool IsUndistorted() const;
+
+  // Whether the camera model is perspective, i.e. has a focal length and a
+  // finite pinhole image plane (so positive-depth cheirality applies).
+  // Omnidirectional models such as EQUIRECTANGULAR are not perspective.
+  inline bool IsPerspective() const;
+
+  // Whether the camera model is spherical (equirectangular omnidirectional
+  // panorama), i.e. the EQUIRECTANGULAR model.
+  inline bool IsSpherical() const;
+
+  // Whether the camera model is perspective and fisheye.
+  inline bool IsPerspectiveFisheye() const;
+
+  // Whether the camera model is perspective and not fisheye.
+  inline bool IsPerspectivePinhole() const;
 
   // Check whether camera has bogus parameters.
   inline bool HasBogusParams(double min_focal_length_ratio,
@@ -154,9 +175,6 @@ struct Camera {
 
   inline bool operator==(const Camera& other) const;
   inline bool operator!=(const Camera& other) const;
-
- private:
-  void ScaleFocalLengths(double scale_x, double scale_y);
 };
 
 std::ostream& operator<<(std::ostream& stream, const Camera& camera);
@@ -248,8 +266,26 @@ span<const size_t> Camera::PrincipalPointIdxs() const {
   return CameraModelPrincipalPointIdxs(model_id);
 }
 
+span<const size_t> Camera::MetaDataParamsIdxs() const {
+  return CameraModelMetaDataParamsIdxs(model_id);
+}
+
 span<const size_t> Camera::ExtraParamsIdxs() const {
   return CameraModelExtraParamsIdxs(model_id);
+}
+
+bool Camera::IsPerspective() const {
+  return CameraModelIsPerspective(model_id);
+}
+
+bool Camera::IsSpherical() const { return CameraModelIsSpherical(model_id); }
+
+bool Camera::IsPerspectiveFisheye() const {
+  return CameraModelIsPerspectiveFisheye(model_id);
+}
+
+bool Camera::IsPerspectivePinhole() const {
+  return CameraModelIsPerspectivePinhole(model_id);
 }
 
 bool Camera::VerifyParams() const {
