@@ -30,7 +30,6 @@
 #include "colmap/retrieval/visual_index.h"
 
 #include "colmap/feature/types.h"
-#include "colmap/math/random.h"
 #include "colmap/math/random_eigen.h"
 #include "colmap/util/file.h"
 #include "colmap/util/testing.h"
@@ -57,8 +56,6 @@ class ParameterizedVisualIndexTests
 
 TEST_P(ParameterizedVisualIndexTests, Nominal) {
   const auto [desc_dim, embedding_dim] = GetParam();
-
-  SetPRNGSeed(1);
 
   {
     auto visual_index = VisualIndex::Create(desc_dim, embedding_dim);
@@ -137,6 +134,14 @@ TEST_P(ParameterizedVisualIndexTests, Nominal) {
     EXPECT_EQ(image_scores[0].image_id, 1);
     EXPECT_EQ(image_scores[1].image_id, 2);
     EXPECT_GT(image_scores[0].score, image_scores[1].score);
+
+    query_options.max_num_images = 1;
+    query_options.image_id_filter = [](const int image_id) {
+      return image_id != 1;
+    };
+    visual_index->Query(query_options, descriptors1, &image_scores);
+    ASSERT_EQ(image_scores.size(), 1);
+    EXPECT_EQ(image_scores[0].image_id, 2);
   }
 }
 
@@ -188,8 +193,6 @@ TEST_P(ParameterizedVisualIndexTests, ReadWrite) {
 
 TEST_P(ParameterizedVisualIndexTests, SpatialVerification) {
   const auto [desc_dim, embedding_dim] = GetParam();
-
-  SetPRNGSeed(1);
 
   VisualIndex::BuildOptions build_options;
   // Keep test runtimes low.
@@ -288,8 +291,6 @@ TEST_P(ParameterizedVisualIndexTests, SpatialVerification) {
 TEST_P(ParameterizedVisualIndexTests, TypeMismatch) {
   const auto [desc_dim, embedding_dim] = GetParam();
 
-  SetPRNGSeed(1);
-
   VisualIndex::BuildOptions build_options;
   build_options.num_iterations = 10;
   build_options.num_rounds = 1;
@@ -331,8 +332,6 @@ TEST_P(ParameterizedVisualIndexTests, TypeMismatch) {
 }
 
 TEST(VisualIndex, Print) {
-  SetPRNGSeed(1);
-
   VisualIndex::BuildOptions build_options;
   build_options.num_iterations = 10;
   build_options.num_rounds = 1;

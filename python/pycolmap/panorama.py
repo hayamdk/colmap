@@ -3,6 +3,7 @@
 import collections
 import enum
 import os
+import sys
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -18,19 +19,37 @@ from . import _core as pycolmap
 logging = pycolmap.logging
 
 
-class Matcher(enum.StrEnum):
+if sys.version_info >= (3, 11):
+    StrEnum = enum.StrEnum
+else:
+    # Backport of enum.StrEnum, added in Python 3.11. Members compare equal to
+    # their string value and auto() yields the lower-cased member name.
+    # TODO: remove once support for Python 3.10 is dropped after its EOL in
+    # October 2026.
+    class StrEnum(str, enum.Enum):
+        @staticmethod
+        def _generate_next_value_(
+            name: str, start: int, count: int, last_values: list
+        ) -> str:
+            return name.lower()
+
+        def __str__(self) -> str:
+            return str(self.value)
+
+
+class Matcher(StrEnum):
     SEQUENTIAL = enum.auto()
     EXHAUSTIVE = enum.auto()
     VOCABTREE = enum.auto()
     SPATIAL = enum.auto()
 
 
-class Mapper(enum.StrEnum):
+class Mapper(StrEnum):
     INCREMENTAL = enum.auto()
     GLOBAL = enum.auto()
 
 
-class PanoRenderType(enum.StrEnum):
+class PanoRenderType(StrEnum):
     PERSPECTIVE_OVERLAPPING = enum.auto()
     PERSPECTIVE_NON_OVERLAPPING = enum.auto()
     # Reconstruct directly on the panoramas with the native EQUIRECTANGULAR
@@ -114,7 +133,7 @@ def get_virtual_camera_rays(
     xy: NDArrayNx2 = np.column_stack([x.ravel(), y.ravel()])
     # The center of the upper left most pixel has coordinate (0.5, 0.5)
     xy += 0.5
-    xy_norm: NDArrayNx2 = camera.cam_from_img(image_points=xy)
+    xy_norm: npt.NDArray[np.float64] = camera.cam_from_img(image_points=xy)
     rays = np.concatenate([xy_norm, np.ones_like(xy_norm[:, :1])], -1)
     rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
     return rays
@@ -203,7 +222,7 @@ class PanoProcessor:
         output_image_dir: Path,
         mask_dir: Path,
         render_options: PanoRenderOptions,
-    ):
+    ) -> None:
         self.render_options = render_options
         self.pano_image_dir = pano_image_dir
         self.output_image_dir = output_image_dir
@@ -395,7 +414,14 @@ class PanoProcessor:
                 if num_points2D == 0:
                     old_to_new_point2D[image.image_id] = {}
                     continue
-                xy = np.array([point2D.xy for point2D in image.points2D])
+                # The cast is needed because numpy<2.3, the latest version
+                # supporting Python 3.10, does not infer the array shape.
+                # TODO: remove once support for Python 3.10 is dropped after
+                # its EOL in October 2026.
+                xy = cast(
+                    NDArrayNx2,
+                    np.array([point2D.xy for point2D in image.points2D]),
+                )
                 rays_in_cam: npt.NDArray[np.floating] = np.asarray(
                     self._camera.cam_ray_from_img(image_points=xy)
                 )

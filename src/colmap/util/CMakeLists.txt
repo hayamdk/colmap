@@ -35,6 +35,7 @@ COLMAP_ADD_LIBRARY(
     SRCS
         base_controller.h base_controller.cc
         cache.h
+        cancellation.h cancellation.cc
         hash_containers.h
         controller_thread.h
         eigen_alignment.h
@@ -149,6 +150,8 @@ if(TESTS_ENABLED)
         PUBLIC_LINK_LIBS
             colmap_util
             glog::glog
+        PRIVATE_LINK_LIBS
+            colmap_math
     )
     if(NOT BUILD_SHARED_LIBS)
         # With static builds, colmap_gtest_main provides gmock/gtest symbols
@@ -166,6 +169,11 @@ COLMAP_ADD_TEST(
 COLMAP_ADD_TEST(
     NAME cache_test
     SRCS cache_test.cc
+    LINK_LIBS colmap_util
+)
+COLMAP_ADD_TEST(
+    NAME cancellation_test
+    SRCS cancellation_test.cc
     LINK_LIBS colmap_util
 )
 COLMAP_ADD_TEST(
@@ -250,5 +258,22 @@ if(GUI_ENABLED)
         NAME opengl_utils_test
         SRCS opengl_utils_test.cc
         LINK_LIBS colmap_util
+    )
+endif()
+
+if(HIP_ENABLED)
+    # On ROCm builds, cuda.cc / cudacc.cc compile with the host C++ compiler.
+    # They reference cudaXxx symbols, which the cuda_to_hip.h compatibility
+    # header (transitively included via cudacc.h) aliases to the hipXxx
+    # equivalents at preprocess time.
+    COLMAP_ADD_LIBRARY(
+        NAME colmap_util_cuda
+        SRCS
+            cuda.h cuda.cc
+            cudacc.h cudacc.cc
+            cuda_to_hip.h
+        PUBLIC_LINK_LIBS
+            colmap_util
+            hip::host
     )
 endif()
