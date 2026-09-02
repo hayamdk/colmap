@@ -224,6 +224,12 @@ BundleAdjustmentOptions IncrementalPipelineOptions::LocalBundleAdjustment()
         CeresBundleAdjustmentOptions::LossFunctionType::SOFT_L1;
     options.ceres->use_gpu = ba_use_gpu;
     options.ceres->gpu_index = ba_gpu_index;
+
+    options.ceres->min_num_images_gpu_solver = ba_min_num_images_gpu_solver;
+    options.ceres->max_num_images_direct_dense_cpu_solver = ba_max_num_images_direct_dense_cpu_solver;
+    options.ceres->max_num_images_direct_sparse_cpu_solver = ba_max_num_images_direct_sparse_cpu_solver;
+    options.ceres->max_num_images_direct_dense_gpu_solver = ba_max_num_images_direct_dense_gpu_solver;
+    options.ceres->max_num_images_direct_sparse_gpu_solver = ba_max_num_images_direct_sparse_gpu_solver;
   }
   if (options.caspar) {
     // Only forward the iteration bound when the user explicitly set it
@@ -273,6 +279,12 @@ BundleAdjustmentOptions IncrementalPipelineOptions::GlobalBundleAdjustment()
         CeresBundleAdjustmentOptions::LossFunctionType::TRIVIAL;
     options.ceres->use_gpu = ba_use_gpu;
     options.ceres->gpu_index = ba_gpu_index;
+
+    options.ceres->min_num_images_gpu_solver = ba_min_num_images_gpu_solver;
+    options.ceres->max_num_images_direct_dense_cpu_solver = ba_max_num_images_direct_dense_cpu_solver;
+    options.ceres->max_num_images_direct_sparse_cpu_solver = ba_max_num_images_direct_sparse_cpu_solver;
+    options.ceres->max_num_images_direct_dense_gpu_solver = ba_max_num_images_direct_dense_gpu_solver;
+    options.ceres->max_num_images_direct_sparse_gpu_solver = ba_max_num_images_direct_sparse_gpu_solver;
   }
   if (options.caspar) {
     // See LocalBundleAdjustment(): only forward the iteration bound to the

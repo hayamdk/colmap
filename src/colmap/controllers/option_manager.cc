@@ -727,6 +727,18 @@ void OptionManager::AddMapperOptions() {
                    &mapper->snapshot_frames_freq);
   AddDefaultOption("Mapper.fix_existing_frames", &mapper->fix_existing_frames);
 
+  // Heuristic BA thresholds
+  AddDefaultOption("Mapper.ba_min_num_images_gpu_solver",
+                              &mapper->ba_min_num_images_gpu_solver);
+  AddDefaultOption("Mapper.ba_max_num_images_direct_dense_cpu_solver",
+                              &mapper->ba_max_num_images_direct_dense_cpu_solver);
+  AddDefaultOption("Mapper.ba_max_num_images_direct_sparse_cpu_solver",
+                              &mapper->ba_max_num_images_direct_sparse_cpu_solver);
+  AddDefaultOption("Mapper.ba_max_num_images_direct_dense_gpu_solver",
+                              &mapper->ba_max_num_images_direct_dense_gpu_solver);
+  AddDefaultOption("Mapper.ba_max_num_images_direct_sparse_gpu_solver",
+                              &mapper->ba_max_num_images_direct_sparse_gpu_solver);
+
   // IncrementalMapper.
   AddDefaultOption("Mapper.init_min_num_inliers",
                    &mapper->mapper.init_min_num_inliers);
